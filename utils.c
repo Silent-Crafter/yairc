@@ -109,6 +109,7 @@ ircMessage* deserializeMessage(const void* src, const size_t ssize) {
 
     // Check for the least possible lower bound that message buffer can have
     if (ssize < 2*sizeof(uint32_t)) {
+        errno = ERANGE;
         return NULL;
     }
 
@@ -128,11 +129,13 @@ ircMessage* deserializeMessage(const void* src, const size_t ssize) {
 
     // Sussy activity
     if ((messagelen + senderlen + 2*sizeof(uint32_t)) != ssize) {
+        errno = EMSGSIZE;
         return NULL;
     }
 
     // Boundry check to prevent malformed or corrupted packet
     if (!(senderlen >= 1 && senderlen < IRC_SENDER_SIZE) || !(messagelen >= 1 && messagelen < IRC_MSG_SIZE)) {
+        errno = ERANGE;
         return NULL;
     }
 
