@@ -10,6 +10,7 @@
 #define IRC_SENDER_SIZE 128
 #define IRC_BUFFER_SIZE 2048
 
+
 typedef struct {
     struct sockaddr_in clientaddr;
     int clientfd;
@@ -23,16 +24,27 @@ typedef struct {
     char message[IRC_MSG_SIZE];
 } ircMessage;
 
+
+// ==============================
 // STRUCT CONSTRUCTORS
+// ==============================
 ircClient* Client();
 ircMessage* Message();
 
-void failOnError(const int, const char*);
+
+// ==============================
+// MESSAGING FUNCTIONS
+// ==============================
 int ircBroadcast(int*, int, const ircMessage, int);
 int serializeMessage(const ircMessage*, char*, size_t);
 ircMessage* deserializeMessage(const void*, const size_t);
 void freeMessage(ircMessage*);
 
+
+// ==============================
+// MISC FUNCTIONS
+// ==============================
+void failOnError(const int, const char*);
 void printBufferHex(char*, uint32_t);
 
 #endif

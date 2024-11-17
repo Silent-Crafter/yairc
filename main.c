@@ -31,7 +31,7 @@ int main() {
         printf("\nSENDER_LEN=%u\nMESSAGE_LEN=%u\nSENDER=%s\nMESSAGE=%s\n", messageOut->senderlen, messageOut->messagelen, messageOut->sender, messageOut->message);
     }
 
-    if (message)freeMessage(message);
+    if (message) freeMessage(message);
     if (messageOut) freeMessage(messageOut);
     return 0;
 }

@@ -39,10 +39,7 @@ void printBufferHex(char* buffer, uint32_t size) {
  */
  ircMessage* Message() {
      ircMessage *msg = (ircMessage*)malloc(sizeof(ircMessage));
-     msg->senderlen = 0;
-     msg->messagelen = 0;
-     memset(msg->sender, 0, IRC_SENDER_SIZE);
-     memset(msg->message, 0, IRC_MSG_SIZE);
+     memset(msg, 0, sizeof(ircMessage));
      return msg;
  }
 
@@ -72,6 +69,14 @@ int ircBroadcast(int* clients, int clientSize, const ircMessage msg, int flags) 
     return 0;
 }
 
+/*
+ * serializeMessage() takes a ircMessage object and packs its members in a dest char array
+ * with size dsize. if data is less than dsize it will padd the destination will null characters
+ * @param src: ircMessage object
+ * @param dest: buffer to store the serialized structure
+ * @param dsize: size of the destination buffer
+ * @return int actual size written in buffer
+ */
 int serializeMessage(const ircMessage* src, char* dest, size_t dsize) {
     if (!src) return -1;
 
@@ -83,6 +88,8 @@ int serializeMessage(const ircMessage* src, char* dest, size_t dsize) {
         return -1;
     }
 
+    int remainingBytes = dsize - actualsize;
+
     // Convert from host byte order to network byte order
     // to be compatible with cpus having different endianess
     size_t senderlen = htonl(src->senderlen);
@@ -92,6 +99,9 @@ int serializeMessage(const ircMessage* src, char* dest, size_t dsize) {
     memcpy(dest+sizeof(uint32_t), &messagelen, sizeof(uint32_t));
     memcpy(dest+2*sizeof(uint32_t), src->sender, src->senderlen);
     memcpy(dest+2*sizeof(uint32_t)+src->senderlen, src->message, src->messagelen);
+
+    // Pad the remaining bytes with null character
+    if (remainingBytes > 0) memset(dest+2*sizeof(uint32_t)+src->senderlen+src->messagelen, 0, remainingBytes);
 
     return actualsize;
 }
