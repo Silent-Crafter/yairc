@@ -96,12 +96,16 @@ int serializeMessage(const ircMessage* src, char* dest, size_t dsize) {
     size_t messagelen = htonl(src->messagelen);
 
     memcpy(dest, &senderlen, sizeof(uint32_t));
-    memcpy(dest+sizeof(uint32_t), &messagelen, sizeof(uint32_t));
-    memcpy(dest+2*sizeof(uint32_t), src->sender, src->senderlen);
-    memcpy(dest+2*sizeof(uint32_t)+src->senderlen, src->message, src->messagelen);
+    dest += sizeof(uint32_t);
+    memcpy(dest, &messagelen, sizeof(uint32_t));
+    dest += sizeof(uint32_t);
+    memcpy(dest, src->sender, src->senderlen);
+    dest += src->senderlen;
+    memcpy(dest, src->message, src->messagelen);
+    dest += src->messagelen;
 
     // Pad the remaining bytes with null character
-    if (remainingBytes > 0) memset(dest+2*sizeof(uint32_t)+src->senderlen+src->messagelen, 0, remainingBytes);
+    if (remainingBytes > 0) memset(dest, 0, remainingBytes);
 
     return actualsize;
 }
