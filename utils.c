@@ -6,8 +6,11 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <errno.h>
+#include <sys/socket.h>
 
 #include "utils.h"
+
+typedef struct sockaddr SA;
 
 void printBufferHex(char* buffer, uint32_t size) {
     printf("\n----------BUFFER----------\n");
@@ -43,16 +46,33 @@ void printBufferHex(char* buffer, uint32_t size) {
      return msg;
  }
 
+ /*
+ * Default Constructor for ircClient
+ * @param none
+ * @return object of type ircClient
+ */
+ ircClient* Client() {
+     ircClient* client = (ircClient*)malloc(sizeof(ircClient));
+     memset(client, 0, sizeof(ircClient));
+     client->clientlen = sizeof(SA);
+     return client;
+ }
+
 /*
  * failOnError function exits the program if an error occurs during socket function calls
  * @param retval: return value of any socket function
  * @param errorMessage: error message to print before quiting
+ * @return the original return value
  */
-void failOnError(const int retval, const char* errorMessage) {
+int failOnError(const int retval, const char* errorMessage) {
     // most socket functions fail by denoting a negative return value
-    if (retval >= 0) return;
+    if (retval >= 0) return retval;
     perror(errorMessage);
+    printf("\n");
     exit(EXIT_FAILURE);
+
+    // Unreachable
+    return 1;
 }
 
 /*
@@ -80,7 +100,7 @@ int ircBroadcast(int* clients, int clientSize, const ircMessage msg, int flags) 
 int serializeMessage(const ircMessage* src, char* dest, size_t dsize) {
     if (!src) return -1;
 
-    int actualsize = 2 * sizeof(uint32_t) + src->messagelen + src->senderlen;
+    int actualsize = 2 * sizeof(uint32_t) + sizeof(message_t) + strlen(src->message) + strlen(src->sender);
 
     // Message too big for buffer
     if (actualsize < 1 || actualsize > dsize) {
@@ -95,12 +115,19 @@ int serializeMessage(const ircMessage* src, char* dest, size_t dsize) {
     size_t senderlen = htonl(src->senderlen);
     size_t messagelen = htonl(src->messagelen);
 
+    // Copy data to dest buffer member by member
+    memcpy(dest, &src->messageType, sizeof(message_t));
+    dest += sizeof(message_t);
+
     memcpy(dest, &senderlen, sizeof(uint32_t));
     dest += sizeof(uint32_t);
+
     memcpy(dest, &messagelen, sizeof(uint32_t));
     dest += sizeof(uint32_t);
+
     memcpy(dest, src->sender, src->senderlen);
     dest += src->senderlen;
+
     memcpy(dest, src->message, src->messagelen);
     dest += src->messagelen;
 
@@ -116,19 +143,25 @@ int serializeMessage(const ircMessage* src, char* dest, size_t dsize) {
  * @param ssize: size of the message buffer
  * @return object of type ircMessage
  */
-ircMessage* deserializeMessage(const void* src, const size_t ssize) {
-    if (src == NULL) {
+ircMessage* deserializeMessage(void* buf, const size_t ssize) {
+    if (buf == NULL) {
         return NULL;
     }
 
     // Check for the least possible lower bound that message buffer can have
-    if (ssize < 2*sizeof(uint32_t)) {
-        errno = ERANGE;
+    if (ssize < 2*sizeof(uint32_t) + sizeof(message_t)) {
+        errno = EBADE;
         return NULL;
     }
 
-    size_t senderlen, messagelen;
-    char message[IRC_MSG_SIZE], sender[IRC_SENDER_SIZE];
+    size_t senderlen = 0, messagelen = 0;
+    message_t messageType;
+    char message[IRC_MSG_SIZE] = {0};
+    char sender[IRC_SENDER_SIZE] = {0};
+    void* src = buf;
+
+    memcpy(&messageType, src, sizeof(message_t));
+    src += sizeof(message_t);
 
     memcpy(&senderlen, src, sizeof(uint32_t));
     src += sizeof(uint32_t);
@@ -142,8 +175,8 @@ ircMessage* deserializeMessage(const void* src, const size_t ssize) {
     messagelen = ntohl(messagelen);
 
     // Sussy activity
-    if ((messagelen + senderlen + 2*sizeof(uint32_t)) != ssize) {
-        errno = EMSGSIZE;
+    if ((messagelen + senderlen + 2*sizeof(uint32_t) + sizeof(message_t)) != ssize) {
+        errno = EBADE;
         return NULL;
     }
 
@@ -162,6 +195,7 @@ ircMessage* deserializeMessage(const void* src, const size_t ssize) {
 
     // Pack the data in the message structure and return it
     ircMessage* msg = Message();
+    msg->messageType = messageType;
     msg->senderlen = strlen(sender);
     msg->messagelen = strlen(message);
     // use memcpy instead of strncpy as the message is already null terminated
@@ -169,11 +203,97 @@ ircMessage* deserializeMessage(const void* src, const size_t ssize) {
     memcpy(msg->sender, sender, msg->senderlen);
     memcpy(msg->message, message, msg->messagelen);
 
+    // Flush the buffer
+    memset(buf, 0, ssize);
+
     return msg;
 }
 
+// free memory safely
 void freeMessage(ircMessage* msg) {
     if (msg != NULL) {
         free(msg);
     }
+}
+
+void freeClient(ircClient* client) {
+    if (client != NULL) {
+        if(client->clientfd) {
+            shutdown(client->clientfd, SHUT_RDWR);
+            close(client->clientfd);
+        }
+        free(client);
+    }
+}
+
+int initServer(const char* hostname, int port, struct sockaddr_in* servaddr, socklen_t* servlen) {
+    int sockfd;
+    int opt = 1;
+
+    servaddr->sin_family = AF_INET;
+    servaddr->sin_port = htons(port);
+    inet_pton(AF_INET, hostname, &servaddr->sin_addr);
+
+    *servlen = sizeof(struct sockaddr_in);
+
+    sockfd = failOnError(socket(AF_INET, SOCK_STREAM, IPPROTO_TCP), "[ERROR] Socket creation failed");
+    failOnError(bind(sockfd, (struct sockaddr*)servaddr, *servlen), "[ERROR] bind() failed");
+    failOnError(setsockopt(sockfd, SOL_SOCKET, SO_KEEPALIVE | SO_REUSEADDR, &opt, sizeof(int)), "[ERROR] setsockopt() failed");
+    failOnError(listen(sockfd, IRC_MAX_CLIENTS), "[ERROR] listen() failed");
+
+    return sockfd;
+}
+
+ircClient* acceptClient(int sockfd) {
+    ircClient* client = Client();
+
+    client->clientfd = failOnError(accept(sockfd, (SA*)&(client->clientaddr), &(client->clientlen)), "[ERROR] Failed to accept connection");
+    printf("[INFO] connection from %s:%d at fd %d\n", inet_ntoa(client->clientaddr.sin_addr), ntohs(client->clientaddr.sin_port), client->clientfd);
+
+    // TODO: REIMPLEMENT WITH PROPER HEADERS AND AUTHENTICATION PROTOCOL
+    ircMessage* q = Message();
+    q->messageType = IRC_PK_AUTHQ;
+    q->senderlen = 6;
+    q->messagelen = 5;
+    strncpy(q->sender, "SERVER", q->senderlen);
+    strncpy(q->message, "USER:", q->messagelen);
+
+    char buf[IRC_BUFFER_SIZE];
+    int bytes = serializeMessage(q, buf, IRC_BUFFER_SIZE);
+    send(client->clientfd, buf, bytes, 0);
+
+    memset(buf, 0, IRC_BUFFER_SIZE);
+    int bytesReceived = recv(client->clientfd, buf, IRC_BUFFER_SIZE, 0);
+    ircMessage* ans = deserializeMessage(buf, bytesReceived);
+
+    if (!ans) {
+        perror("Error occured");
+        freeClient(client);
+        return NULL;
+    }
+
+    strncpy(client->senderName, ans->message, ans->messagelen);
+    printf("TYPE=%d\nSENDER=%s\nDATA=%s\n", ans->messageType, ans->sender, ans->sender);
+
+    return client;
+}
+
+void removeClient(ircClient* client, ircClient* clients[], int* totalClients) {
+    if (client == NULL) return;
+    char* hostname = inet_ntoa(client->clientaddr.sin_addr);
+    int port = ntohs(client->clientaddr.sin_port);
+
+    int i;
+    for (i = 0 ; i < *totalClients ; i++) {
+        if (clients[i]->clientfd == client->clientfd) {
+            freeClient(clients[i]);
+            clients[i] = NULL;
+            break;
+        }
+    }
+
+    clients[i] = clients[(*totalClients)-1];
+    clients[(*totalClients)-1] = NULL;
+    (*totalClients) -= 1;
+    printf("[INFO] Successfully closed connection from %s:%d\n", hostname, port);
 }

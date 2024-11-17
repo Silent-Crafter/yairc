@@ -1,37 +1,39 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
-#include <errno.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <unistd.h>
+
 #include "utils.h"
 
-int main() {
-    ircMessage* message = Message();
-    ircMessage* messageOut;
+int main(int argc, char* argv[]) {
 
-    char sender[] = "Nikhil";
-    char msg[] = "Hello World";
-
-    char buffer[IRC_BUFFER_SIZE];
-
-    message->senderlen = strlen(sender);
-    message->messagelen = strlen(msg);
-    strncpy(message->sender, sender, message->senderlen);
-    strncpy(message->message, msg, message->messagelen);
-
-    printf("\nSENDER_LEN=%u\nMESSAGE_LEN=%u\nSENDER=%s\nMESSAGE=%s\n", message->senderlen, message->messagelen, message->sender, message->message);
-
-    int bytes = serializeMessage(message, buffer, IRC_BUFFER_SIZE - 1);
-    buffer[bytes] = '\0';
-    printBufferHex(buffer, bytes);
-    messageOut = deserializeMessage(buffer, bytes);
-
-    if (!messageOut) {
-        perror("Error while deserializing");
-        printf("\nerrno=%d\n", errno);
-    } else {
-        printf("\nSENDER_LEN=%u\nMESSAGE_LEN=%u\nSENDER=%s\nMESSAGE=%s\n", messageOut->senderlen, messageOut->messagelen, messageOut->sender, messageOut->message);
+    if (argc != 3) {
+        return 1;
     }
 
-    if (message) freeMessage(message);
-    if (messageOut) freeMessage(messageOut);
+    char hostname[20];
+    strncpy(hostname, argv[1], 20);
+
+    int port = atoi(argv[2]);
+
+    int sockfd, clientfd;
+    int opt = 1;
+    struct sockaddr_in servaddr;
+    socklen_t servlen = sizeof(servaddr);
+
+    ircClient* clients[IRC_MAX_CLIENTS];
+    int totalClients = 0;
+
+    sockfd = initServer(hostname, port, &servaddr, &servlen);
+
+    printf("[INFO] Server listening on %s:%d\n", hostname, port);
+
+    freeClient(acceptClient(sockfd));
+
+    shutdown(sockfd, SHUT_RDWR);
+    close(sockfd);
     return 0;
 }
