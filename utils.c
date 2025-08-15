@@ -3,16 +3,16 @@
 #include <string.h>
 #include <stdint.h>
 #include <inttypes.h>
-#include <arpa/inet.h>
-#include <netinet/in.h>
-#include <errno.h>
 #include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <errno.h>
 
 #include "utils.h"
 
 typedef struct sockaddr SA;
 
-void printBufferHex(char* buffer, uint32_t size) {
+extern void printBufferHex(char* buffer, uint32_t size) {
     printf("\n----------BUFFER----------\n");
     int i = 0;
     int j = 0;
@@ -40,7 +40,7 @@ void printBufferHex(char* buffer, uint32_t size) {
  * @param none
  * @return object of type ircMessage
  */
- ircMessage* Message() {
+ extern ircMessage* Message() {
      ircMessage *msg = (ircMessage*)malloc(sizeof(ircMessage));
      memset(msg, 0, sizeof(ircMessage));
      return msg;
@@ -51,7 +51,7 @@ void printBufferHex(char* buffer, uint32_t size) {
  * @param none
  * @return object of type ircClient
  */
- ircClient* Client() {
+ extern ircClient* Client() {
      ircClient* client = (ircClient*)malloc(sizeof(ircClient));
      memset(client, 0, sizeof(ircClient));
      client->clientlen = sizeof(SA);
@@ -64,7 +64,7 @@ void printBufferHex(char* buffer, uint32_t size) {
  * @param errorMessage: error message to print before quiting
  * @return the original return value
  */
-int failOnError(const int retval, const char* errorMessage) {
+extern int failOnError(const int retval, const char* errorMessage) {
     // most socket functions fail by denoting a negative return value
     if (retval >= 0) return retval;
     perror(errorMessage);
@@ -81,7 +81,7 @@ int failOnError(const int retval, const char* errorMessage) {
  *              along with their respective string lengths
  * @param flags: flags for the send() function
  */
-int ircBroadcast(int* clients, int clientSize, const ircMessage msg, int flags) {
+extern int ircBroadcast(int* clients, int clientSize, const ircMessage msg, int flags) {
     for (int i = 0 ; i < clientSize ; i++) {
         ;
     }
@@ -97,7 +97,7 @@ int ircBroadcast(int* clients, int clientSize, const ircMessage msg, int flags) 
  * @param dsize: size of the destination buffer
  * @return int actual size written in buffer
  */
-int serializeMessage(const ircMessage* src, char* dest, size_t dsize) {
+extern int serializeMessage(const ircMessage* src, char* dest, size_t dsize) {
     if (!src) return -1;
 
     int actualsize = 2 * sizeof(uint32_t) + sizeof(message_t) + strlen(src->message) + strlen(src->sender);
@@ -143,7 +143,7 @@ int serializeMessage(const ircMessage* src, char* dest, size_t dsize) {
  * @param ssize: size of the message buffer
  * @return object of type ircMessage
  */
-ircMessage* deserializeMessage(void* buf, const size_t ssize) {
+extern ircMessage* deserializeMessage(void* buf, const size_t ssize) {
     if (buf == NULL) {
         return NULL;
     }
@@ -210,13 +210,13 @@ ircMessage* deserializeMessage(void* buf, const size_t ssize) {
 }
 
 // free memory safely
-void freeMessage(ircMessage* msg) {
+extern void freeMessage(ircMessage* msg) {
     if (msg != NULL) {
         free(msg);
     }
 }
 
-void freeClient(ircClient* client) {
+extern void freeClient(ircClient* client) {
     if (client != NULL) {
         if(client->clientfd) {
             shutdown(client->clientfd, SHUT_RDWR);
@@ -226,7 +226,16 @@ void freeClient(ircClient* client) {
     }
 }
 
-int initServer(const char* hostname, int port, struct sockaddr_in* servaddr, socklen_t* servlen) {
+/*
+ * initServer() initializes the server on givenn hostname and port and stores the
+ * socket address information in servaddr and servlen
+ * @param hostname: hostname for server
+ * @param port: port on which the server will listen
+ * @param servaddr: sockaddr_in object to store socket address information
+ * @param servlen: sizeof of the servaddr object
+ * @return return sockfd of the socket on success otherwise exits.
+ */
+extern int initServer(const char* hostname, int port, struct sockaddr_in* servaddr, socklen_t* servlen) {
     int sockfd;
     int opt = 1;
 
@@ -244,13 +253,14 @@ int initServer(const char* hostname, int port, struct sockaddr_in* servaddr, soc
     return sockfd;
 }
 
-ircClient* acceptClient(int sockfd) {
+extern ircClient* acceptClient(int sockfd) {
     ircClient* client = Client();
 
     client->clientfd = failOnError(accept(sockfd, (SA*)&(client->clientaddr), &(client->clientlen)), "[ERROR] Failed to accept connection");
     printf("[INFO] connection from %s:%d at fd %d\n", inet_ntoa(client->clientaddr.sin_addr), ntohs(client->clientaddr.sin_port), client->clientfd);
 
     // TODO: REIMPLEMENT WITH PROPER HEADERS AND AUTHENTICATION PROTOCOL
+    // DONEISH??
     ircMessage* q = Message();
     q->messageType = IRC_PK_AUTHQ;
     q->senderlen = 6;
@@ -273,12 +283,11 @@ ircClient* acceptClient(int sockfd) {
     }
 
     strncpy(client->senderName, ans->message, ans->messagelen);
-    printf("TYPE=%d\nSENDER=%s\nDATA=%s\n", ans->messageType, ans->sender, ans->sender);
 
     return client;
 }
 
-void removeClient(ircClient* client, ircClient* clients[], int* totalClients) {
+extern void removeClient(ircClient* client, ircClient* clients[], int* totalClients) {
     if (client == NULL) return;
     char* hostname = inet_ntoa(client->clientaddr.sin_addr);
     int port = ntohs(client->clientaddr.sin_port);
@@ -296,4 +305,72 @@ void removeClient(ircClient* client, ircClient* clients[], int* totalClients) {
     clients[(*totalClients)-1] = NULL;
     (*totalClients) -= 1;
     printf("[INFO] Successfully closed connection from %s:%d\n", hostname, port);
+}
+
+/*
+ * Used to connect to an ircServer.
+ * @param hostname: hostname of irc server
+ * @param port: port on which the ircServer is listening
+ * @return socket file descriptor
+ */
+extern int ircConnect(const char* hostname, int port) {
+    int sockfd;
+    struct sockaddr_in servaddr;
+
+    memset(&servaddr, 0, sizeof(struct sockaddr_in));
+
+    servaddr.sin_family = AF_INET;
+    servaddr.sin_port = htons(port);
+    if(inet_pton(AF_INET, hostname, &servaddr.sin_addr) == 0) {
+        printf("[ERROR] Invalid hostname");
+        return -1;
+    }
+
+    sockfd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (sockfd < 0) {
+        perror("[ERROR] Error occured while creating socket: ");
+        return -1;
+    }
+
+    if(connect(sockfd, (SA*)&servaddr, sizeof(struct sockaddr_in)) < 0) {
+        return -1;
+    }
+
+    return sockfd;
+}
+
+extern ircMessage* handleMessage(ircMessage* msg) {
+    if (!msg->messageType) {
+        return NULL;
+    }
+
+    switch (msg->messageType) {
+        case IRC_PK_AUTHQ:
+            break;
+
+        case IRC_PK_AUTHA:
+            break;
+
+        case IRC_PK_CMD:
+            break;
+
+        case IRC_PK_MSG:
+            break;
+
+        default:
+            return NULL;
+    }
+    return 0;
+}
+
+ircMessage* __handleQuestion(ircMessage* msg) {
+    return 0;
+}
+
+ircMessage* __handleAnswer(ircMessage* msg) {
+    return 0;
+}
+
+ircMessage* __handleMessage(ircMessage* msg) {
+    return 0;
 }

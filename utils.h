@@ -15,14 +15,14 @@
 typedef enum { IRC_PK_AUTHQ, IRC_PK_AUTHA, IRC_PK_CMD, IRC_PK_MSG } message_t;
 
 
-typedef struct {
+typedef struct __ircClient {
     struct sockaddr_in clientaddr;
     socklen_t clientlen;
     int clientfd;
     char senderName[IRC_SENDER_SIZE];
 } ircClient;
 
-typedef struct {
+typedef struct __ircMessage {
     uint32_t senderlen;
     uint32_t  messagelen;
     message_t messageType;
@@ -55,7 +55,8 @@ ircClient* acceptClient(int);
 void clientHandler(void*);
 void removeClient(ircClient*, ircClient**, int*);
 void freeClient(ircClient*);
-
+int ircConnect(const char*, int);
+extern ircMessage* handleMessage(ircMessage*);
 
 // ==============================
 // MISC FUNCTIONS
