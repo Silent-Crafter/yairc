@@ -41,7 +41,7 @@ ircMessage* Message();
 // ==============================
 // MESSAGING FUNCTIONS
 // ==============================
-int ircSendMessage(ircClient*, int , const char* , const char* , message_t , int , int );
+int ircSendMessage(int sockfd, const char* message, const char* sender, message_t messageType, int messageLen, int senderLen);
 int ircBroadcast(int*, int, const ircMessage, int);
 int serializeMessage(const ircMessage*, char*, size_t);
 ircMessage* deserializeMessage(void*, const size_t);
@@ -64,5 +64,6 @@ extern ircMessage* handleMessage(ircMessage*);
 // ==============================
 int failOnError(const int, const char*);
 void printBufferHex(char*, uint32_t);
+int input(char**, size_t , int);
 
 #endif

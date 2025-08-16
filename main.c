@@ -27,6 +27,9 @@ int main(int argc, char* argv[]) {
     ircClient* clients[IRC_MAX_CLIENTS];
     int totalClients = 0;
 
+    char buf[IRC_BUFFER_SIZE];
+    int bufSize = 0;
+
     sockfd = initServer(hostname, port, &servaddr, &servlen);
 
     printf("[INFO] Server listening on %s:%d\n", hostname, port);
@@ -37,14 +40,17 @@ int main(int argc, char* argv[]) {
     printf("[INFO] Received User name: %s\n", clients[0]->senderName);
 
     while (1) {
-        char buf[IRC_BUFFER_SIZE];
         printf("\nSERVER: ");
         fflush(stdout);
-        scanf("%s", buf);
+        bufSize = input(&(char*){buf}, IRC_BUFFER_SIZE, 0);
+
+        if (bufSize == 0) {
+            strncpy(buf, " ", 0);
+        }
 
         if (!strncmp(buf, "/bye", 4)) break;
 
-        ircSendMessage(clients[0], sockfd, buf, "SERVER", IRC_PK_MSG, strlen(buf), 6);
+        ircSendMessage(clients[0]->clientfd, buf, "SERVER", IRC_PK_MSG, bufSize, 6);
         memset(buf, 0, IRC_BUFFER_SIZE);
 
         int bytesReceived = recv(clients[0]->clientfd, buf, IRC_BUFFER_SIZE, 0);
@@ -55,6 +61,10 @@ int main(int argc, char* argv[]) {
 
         printf("[INFO] Bytes Received: %d\n", bytesReceived);
         ircMessage* msg = deserializeMessage(buf, bytesReceived);
+        if (msg == NULL) {
+            perror("[ERROR] Failed to deserializeMessage");
+            continue;
+        }
         printf("\n%s: %s", msg->sender, msg->message);
         fflush(stdout);
     }

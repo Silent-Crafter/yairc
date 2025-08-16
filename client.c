@@ -3,8 +3,6 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
 
 #include "utils.h"
 
@@ -18,9 +16,11 @@ int main(int argc, char* argv[]) {
     int bytesReceived;
     int bytesSend;
     char hostname[20];
-    char buf[IRC_BUFFER_SIZE];
+    char buf[IRC_BUFFER_SIZE] = {0};
+    int bufSize = 0;
 
-    char clientName[IRC_BUFFER_SIZE];
+    char clientName[IRC_BUFFER_SIZE] = {0};
+    int clientNameSize = 0;
 
     ircMessage* q = NULL;
     ircMessage* msg = Message();
@@ -40,25 +40,21 @@ int main(int argc, char* argv[]) {
         q = deserializeMessage(buf, bytesReceived);
         if (!q) {
             perror("[ERROR] Unable to desserialize");
-            shutdown(sockfd, SHUT_RDWR);
-            close(sockfd);
-            return 1;
+            continue;
         }
 
         switch (q->messageType) {
             case IRC_PK_AUTHQ:
-                printf("%s: %s ",q->sender, q->message);
-                scanf("%s", clientName);
+                printf("%s ",q->message);
+                if ((clientNameSize = input(&(char*){clientName}, IRC_BUFFER_SIZE, 1)) < 0) {
+                    perror("[ERROR] Input error");
+                    break;
+                }
                 printf("[DEBUG] Sending %s as username with length %lu\n", clientName, strlen(clientName));
-                msg->messageType = IRC_PK_AUTHA;
-                msg->senderlen = strlen(clientName);
-                msg->messagelen = msg->senderlen;
-                strncpy(msg->sender, clientName, msg->senderlen);
-                strncpy(msg->message, clientName, msg->senderlen);
-                memset(buf, 0, msg->senderlen+5);
-                bytesSend = serializeMessage(msg, buf, IRC_BUFFER_SIZE);
-                send(sockfd, buf, bytesSend, 0);
-                memset(buf, 0, bytesSend+10);
+                ircSendMessage(sockfd, clientName, clientName, IRC_PK_AUTHA, clientNameSize, clientNameSize);
+
+                // Reset buffer
+                memset(buf, 0, IRC_MSG_SIZE);
                 break;
 
             case IRC_PK_AUTHA:
@@ -71,27 +67,34 @@ int main(int argc, char* argv[]) {
                 printf("[DEBUG] Received %s from server with length %lu\n", q->message, strlen(q->message));
                 printf("%s: %s\n", q->sender, q->message);
                 memset(buf, 0, IRC_BUFFER_SIZE);
-                scanf("%s", buf);
+                printf("\n%s: ", clientName);
+                bufSize = input(&(char*){buf}, IRC_BUFFER_SIZE, 1);
+                if (bufSize < 0) {
+                    perror("[ERROR] Input error");
+                    break;
+                }
 
-                msg->messageType = IRC_PK_MSG;
-                msg->senderlen = strlen(clientName);
-                msg->messagelen = strlen(buf);
+                if (bufSize == 0) {
+                     strncpy(buf, " ", 0);
+                }
 
-                strncpy(msg->sender, clientName, msg->senderlen);
-                strncpy(msg->message, buf, msg->messagelen);
-                memset(buf, 0, msg->senderlen+msg->messagelen);
-
-                bytesSend = serializeMessage(msg, buf, IRC_BUFFER_SIZE);
-                send(sockfd, buf, bytesSend, 0);
-                memset(buf, 0, bytesSend+10);
+                ircSendMessage(
+                    sockfd,
+                    buf,
+                    clientName,
+                    IRC_PK_MSG,
+                    bufSize,
+                    clientNameSize
+                );
+                memset(buf, 0, IRC_BUFFER_SIZE);
                 break;
 
             default:
                 break;
         }
     }
-    freeMessage(msg);
-    freeMessage(q);
+    if (msg) freeMessage(msg);
+    if (q) freeMessage(q);
     shutdown(sockfd, SHUT_RDWR);
     close(sockfd);
     return 0;

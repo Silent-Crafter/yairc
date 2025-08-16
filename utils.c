@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <inttypes.h>
 #include <sys/socket.h>
+#include <sys/ioctl.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <errno.h>
@@ -11,6 +12,47 @@
 #include "utils.h"
 
 typedef struct sockaddr SA;
+
+void flushInput() {
+    int bytesAvailable;
+    ioctl(STDIN_FILENO, FIONREAD, &bytesAvailable);
+    if (!bytesAvailable) return;
+
+    while (bytesAvailable-- > 0) {
+        getchar();
+    }
+}
+
+extern int input(char** buf, size_t bufSize, int flush) {
+    if (bufSize <= 0) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    if (*buf == NULL) {
+        *buf = (char*)malloc(sizeof(char) * bufSize);
+    }
+
+    char c;
+    int counter = 0;
+    while ((c = (char)getchar()) != EOF) {
+        if (counter == bufSize)
+            break;
+
+        if (c == '\n')
+            break;
+
+        (*buf)[counter] = c;
+        counter++;
+    }
+    (*buf)[counter] = '\0';
+
+    if (flush) {
+        flushInput();
+    }
+
+    return counter;
+}
 
 extern void printBufferHex(char* buffer, uint32_t size) {
     printf("\n----------BUFFER----------\n");
@@ -261,7 +303,7 @@ extern ircClient* acceptClient(int sockfd) {
 
     // TODO: REIMPLEMENT WITH PROPER HEADERS AND AUTHENTICATION PROTOCOL
     // DONEISH??
-    ircSendMessage(client, sockfd, (const char*)"USER:", "SERVER", IRC_PK_AUTHQ, 5, 6);
+    ircSendMessage(client->clientfd, (const char*)"USER:", "SERVER", IRC_PK_AUTHQ, 5, 6);
 
     char buf[IRC_BUFFER_SIZE];
     memset(buf, 0, IRC_BUFFER_SIZE);
@@ -279,7 +321,7 @@ extern ircClient* acceptClient(int sockfd) {
     return client;
 }
 
-extern int ircSendMessage(ircClient* client, int sockfd, const char* message, const char* sender, message_t messageType, int messagelen, int senderlen) {
+extern int ircSendMessage(int sockfd, const char* message, const char* sender, message_t messageType, int messagelen, int senderlen) {
     ircMessage* q = Message();
 
     if (strlen(sender) != senderlen) {
@@ -298,7 +340,7 @@ extern int ircSendMessage(ircClient* client, int sockfd, const char* message, co
 
     char buf[IRC_BUFFER_SIZE];
     int bytes = serializeMessage(q, buf, IRC_BUFFER_SIZE);
-    int retcode = send(client->clientfd, buf, bytes, 0);
+    int retcode = send(sockfd, buf, bytes, 0);
 
     freeMessage(q);
     return retcode;

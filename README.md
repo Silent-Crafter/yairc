@@ -22,5 +22,3 @@ chmod +x ./build.sh
 ```sh
 ./bin/irc-client <ip> <port>
 ```
-
-> Note: Send messages using `_` character as space
