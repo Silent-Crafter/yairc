@@ -31,8 +31,35 @@ int main(int argc, char* argv[]) {
 
     printf("[INFO] Server listening on %s:%d\n", hostname, port);
 
-    freeClient(acceptClient(sockfd));
+    // TODO: Implement conversation between multiple clients
+    //        instead of server and client
+    clients[0] = acceptClient(sockfd);
+    printf("[INFO] Received User name: %s\n", clients[0]->senderName);
 
+    while (1) {
+        char buf[IRC_BUFFER_SIZE];
+        printf("\nSERVER: ");
+        fflush(stdout);
+        scanf("%s", buf);
+
+        if (!strncmp(buf, "/bye", 4)) break;
+
+        ircSendMessage(clients[0], sockfd, buf, "SERVER", IRC_PK_MSG, strlen(buf), 6);
+        memset(buf, 0, IRC_BUFFER_SIZE);
+
+        int bytesReceived = recv(clients[0]->clientfd, buf, IRC_BUFFER_SIZE, 0);
+
+        if (bytesReceived <= 0) {
+            break;
+        }
+
+        printf("[INFO] Bytes Received: %d\n", bytesReceived);
+        ircMessage* msg = deserializeMessage(buf, bytesReceived);
+        printf("\n%s: %s", msg->sender, msg->message);
+        fflush(stdout);
+    }
+
+    freeClient(clients[0]);
     shutdown(sockfd, SHUT_RDWR);
     close(sockfd);
     return 0;

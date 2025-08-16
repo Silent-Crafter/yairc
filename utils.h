@@ -41,6 +41,7 @@ ircMessage* Message();
 // ==============================
 // MESSAGING FUNCTIONS
 // ==============================
+int ircSendMessage(ircClient*, int , const char* , const char* , message_t , int , int );
 int ircBroadcast(int*, int, const ircMessage, int);
 int serializeMessage(const ircMessage*, char*, size_t);
 ircMessage* deserializeMessage(void*, const size_t);

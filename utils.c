@@ -175,10 +175,10 @@ extern ircMessage* deserializeMessage(void* buf, const size_t ssize) {
     messagelen = ntohl(messagelen);
 
     // Sussy activity
-    if ((messagelen + senderlen + 2*sizeof(uint32_t) + sizeof(message_t)) != ssize) {
-        errno = EBADE;
-        return NULL;
-    }
+    // if ((messagelen + senderlen + 2*sizeof(uint32_t) + sizeof(message_t)) != ssize) {
+    //     errno = EBADE;
+    //     return NULL;
+    // }
 
     // Boundry check to prevent malformed or corrupted packet
     if (!(senderlen >= 1 && senderlen < IRC_SENDER_SIZE) || !(messagelen >= 1 && messagelen < IRC_MSG_SIZE)) {
@@ -246,8 +246,8 @@ extern int initServer(const char* hostname, int port, struct sockaddr_in* servad
     *servlen = sizeof(struct sockaddr_in);
 
     sockfd = failOnError(socket(AF_INET, SOCK_STREAM, IPPROTO_TCP), "[ERROR] Socket creation failed");
-    failOnError(bind(sockfd, (struct sockaddr*)servaddr, *servlen), "[ERROR] bind() failed");
     failOnError(setsockopt(sockfd, SOL_SOCKET, SO_KEEPALIVE | SO_REUSEADDR, &opt, sizeof(int)), "[ERROR] setsockopt() failed");
+    failOnError(bind(sockfd, (struct sockaddr*)servaddr, *servlen), "[ERROR] bind() failed");
     failOnError(listen(sockfd, IRC_MAX_CLIENTS), "[ERROR] listen() failed");
 
     return sockfd;
@@ -261,17 +261,9 @@ extern ircClient* acceptClient(int sockfd) {
 
     // TODO: REIMPLEMENT WITH PROPER HEADERS AND AUTHENTICATION PROTOCOL
     // DONEISH??
-    ircMessage* q = Message();
-    q->messageType = IRC_PK_AUTHQ;
-    q->senderlen = 6;
-    q->messagelen = 5;
-    strncpy(q->sender, "SERVER", q->senderlen);
-    strncpy(q->message, "USER:", q->messagelen);
+    ircSendMessage(client, sockfd, (const char*)"USER:", "SERVER", IRC_PK_AUTHQ, 5, 6);
 
     char buf[IRC_BUFFER_SIZE];
-    int bytes = serializeMessage(q, buf, IRC_BUFFER_SIZE);
-    send(client->clientfd, buf, bytes, 0);
-
     memset(buf, 0, IRC_BUFFER_SIZE);
     int bytesReceived = recv(client->clientfd, buf, IRC_BUFFER_SIZE, 0);
     ircMessage* ans = deserializeMessage(buf, bytesReceived);
@@ -285,6 +277,31 @@ extern ircClient* acceptClient(int sockfd) {
     strncpy(client->senderName, ans->message, ans->messagelen);
 
     return client;
+}
+
+extern int ircSendMessage(ircClient* client, int sockfd, const char* message, const char* sender, message_t messageType, int messagelen, int senderlen) {
+    ircMessage* q = Message();
+
+    if (strlen(sender) != senderlen) {
+        return -1;
+    }
+
+    if (strlen(message) != messagelen) {
+        return -1;
+    }
+
+    q->messageType = messageType;
+    q->senderlen = senderlen;
+    q->messagelen = messagelen;
+    strncpy(q->sender, sender, q->senderlen);
+    strncpy(q->message, message, q->messagelen);
+
+    char buf[IRC_BUFFER_SIZE];
+    int bytes = serializeMessage(q, buf, IRC_BUFFER_SIZE);
+    int retcode = send(client->clientfd, buf, bytes, 0);
+
+    freeMessage(q);
+    return retcode;
 }
 
 extern void removeClient(ircClient* client, ircClient* clients[], int* totalClients) {
